@@ -21,6 +21,7 @@ workspace.xml
 /ultimate/tmp
 /js/js.translator/testData/out/
 /js/js.translator/testData/out-min/
+/bin
 .gradle/
 build/
 !**/src/**/build

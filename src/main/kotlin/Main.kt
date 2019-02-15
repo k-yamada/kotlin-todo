@@ -5,16 +5,16 @@ import io.ktor.application.install
 import io.ktor.features.CallLogging
 import io.ktor.features.ContentNegotiation
 import io.ktor.features.DefaultHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.jackson.jackson
 import io.ktor.request.receive
 import io.ktor.response.respond
 import io.ktor.routing.Routing
+import io.ktor.routing.delete
 import io.ktor.routing.get
 import io.ktor.routing.post
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import model.Todo
 import model.TodoData
 import model.Todos
@@ -26,7 +26,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 
 fun main(args: Array<String>) {
     setupDatabase()
-    embeddedServer(Netty, 8080, watchPaths = listOf("BlogAppKt"), module = Application::module).start()
+    embeddedServer(Netty, 8080, watchPaths = listOf("MainKt"), module = Application::module).start()
 }
 
 data class TodoParameter(val title: String, val description: String)
@@ -40,7 +40,6 @@ fun Application.module() {
         }
     }
     install(Routing) {
-        // curl localhost:8080/todos
         get("/todos") {
             var result = emptyList<TodoData>()
             transaction {
@@ -50,7 +49,6 @@ fun Application.module() {
             call.respond(mapOf("todos" to result))
         }
 
-        // curl -X POST -H "Content-Type: application/json" -d '{"title":"hoge", "description":"fuga"}' localhost:8080/todos
         post("/todos") {
             val parameter = call.receive<TodoParameter>()
             var todo: Todo? = null
@@ -60,19 +58,50 @@ fun Application.module() {
                     description = parameter.description
                 }
             }
-            call.respond(todo?.toData() ?: "")
+            if (todo == null) {
+                call.respond(HttpStatusCode.InternalServerError)
+                return@post
+            }
+            call.respond(todo!!.toData())
         }
 
-//        get("/todos/:id") {
-//            model.Todo.findById()
-//        }
+        get("/todos/{id}") {
+            val id = call.parameters["id"]?.toInt() ?: run {
+                call.respond(HttpStatusCode.BadRequest)
+                return@get
+            }
+            var todo: Todo? = null
+            transaction {
+                todo = Todo.findById(id)
+            }
+            if (todo == null) {
+                call.respond(HttpStatusCode.NotFound)
+                return@get
+            }
+            call.respond(todo!!.toData())
+        }
 
-
+        delete("/todos/{id}") {
+            val id = call.parameters["id"]?.toInt() ?: run {
+                call.respond(HttpStatusCode.BadRequest)
+                return@delete
+            }
+            var statusCode = HttpStatusCode.OK
+            transaction {
+                val todo = Todo.findById(id)
+                if (todo == null) {
+                    statusCode = HttpStatusCode.NotFound
+                    return@transaction
+                }
+                todo.delete()
+            }
+            call.respond(statusCode)
+        }
     }
 }
 
 private fun setupDatabase() {
-    // MySQLの「todo」データベースに接続
+    // MySQLの `todo` データベースに接続
     Database.connect("jdbc:mysql://localhost/todo", "com.mysql.jdbc.Driver", "root", "")
 
     transaction {
@@ -80,7 +109,7 @@ private fun setupDatabase() {
         addLogger(StdOutSqlLogger)
 
         // テーブルを作成
-        SchemaUtils.create (Todos)
+        SchemaUtils.create(Todos)
     }
 }
 

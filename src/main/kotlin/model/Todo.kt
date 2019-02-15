@@ -10,5 +10,5 @@ class Todo(id: EntityID<Int>) : IntEntity(id) {
     var title by Todos.title
     var description by Todos.description
 
-    fun toData(): TodoData = TodoData(title, description)
+    fun toData(): TodoData = TodoData(id.value, title, description)
 }
